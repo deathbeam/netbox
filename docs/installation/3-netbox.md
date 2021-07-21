@@ -73,6 +73,11 @@ Next, clone the **master** branch of the NetBox GitHub repository into the curre
 
 ```no-highlight
 $ sudo git clone -b master https://github.com/netbox-community/netbox.git .
+```
+
+The screen below should be the result:
+
+```
 Cloning into '.'...
 remote: Counting objects: 1994, done.
 remote: Compressing objects: 100% (150/150), done.
@@ -198,7 +203,7 @@ All Python packages required by NetBox are listed in `requirements.txt` and will
 The [NAPALM automation](https://napalm-automation.net/) library allows NetBox to fetch live data from devices and return it to a requester via its REST API. The `NAPALM_USERNAME` and `NAPALM_PASSWORD` configuration parameters define the credentials to be used when connecting to a device.
 
 ```no-highlight
-sudo echo napalm >> /opt/netbox/local_requirements.txt
+sudo sh -c "echo 'napalm' >> /opt/netbox/local_requirements.txt"
 ```
 
 ### Remote File Storage
@@ -206,7 +211,7 @@ sudo echo napalm >> /opt/netbox/local_requirements.txt
 By default, NetBox will use the local filesystem to store uploaded files. To use a remote filesystem, install the [`django-storages`](https://django-storages.readthedocs.io/en/stable/) library and configure your [desired storage backend](../configuration/optional-settings.md#storage_backend) in `configuration.py`.
 
 ```no-highlight
-sudo echo django-storages >> /opt/netbox/local_requirements.txt
+sudo sh -c "echo 'django-storages' >> /opt/netbox/local_requirements.txt"
 ```
 
 ## Run the Upgrade Script

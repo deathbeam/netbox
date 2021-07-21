@@ -924,6 +924,7 @@ class PortTypeChoices(ChoiceSet):
     TYPE_110_PUNCH = '110-punch'
     TYPE_BNC = 'bnc'
     TYPE_F = 'f'
+    TYPE_N = 'n'
     TYPE_MRJ21 = 'mrj21'
     TYPE_ST = 'st'
     TYPE_SC = 'sc'
@@ -954,6 +955,7 @@ class PortTypeChoices(ChoiceSet):
                 (TYPE_110_PUNCH, '110 Punch'),
                 (TYPE_BNC, 'BNC'),
                 (TYPE_F, 'F Connector'),
+                (TYPE_N, 'N Connector'),
                 (TYPE_MRJ21, 'MRJ21'),
             ),
         ),
@@ -1001,6 +1003,7 @@ class CableTypeChoices(ChoiceSet):
     TYPE_MMF_OM2 = 'mmf-om2'
     TYPE_MMF_OM3 = 'mmf-om3'
     TYPE_MMF_OM4 = 'mmf-om4'
+    TYPE_MMF_OM5 = 'mmf-om5'
     TYPE_SMF = 'smf'
     TYPE_SMF_OS1 = 'smf-os1'
     TYPE_SMF_OS2 = 'smf-os2'
@@ -1031,6 +1034,7 @@ class CableTypeChoices(ChoiceSet):
                 (TYPE_MMF_OM2, 'Multimode Fiber (OM2)'),
                 (TYPE_MMF_OM3, 'Multimode Fiber (OM3)'),
                 (TYPE_MMF_OM4, 'Multimode Fiber (OM4)'),
+                (TYPE_MMF_OM5, 'Multimode Fiber (OM5)'),
                 (TYPE_SMF, 'Singlemode Fiber'),
                 (TYPE_SMF_OS1, 'Singlemode Fiber (OS1)'),
                 (TYPE_SMF_OS2, 'Singlemode Fiber (OS2)'),

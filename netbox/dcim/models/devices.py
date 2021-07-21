@@ -36,7 +36,7 @@ __all__ = (
 # Device Types
 #
 
-@extras_features('custom_fields', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
 class Manufacturer(OrganizationalModel):
     """
     A Manufacturer represents a company which produces hardware devices; for example, Juniper or Dell.
@@ -75,7 +75,7 @@ class Manufacturer(OrganizationalModel):
         )
 
 
-@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'tags', 'webhooks')
 class DeviceType(PrimaryModel):
     """
     A DeviceType represents a particular make (Manufacturer) and model of device. It specifies rack height and depth, as
@@ -183,6 +183,8 @@ class DeviceType(PrimaryModel):
                 {
                     'name': c.name,
                     'type': c.type,
+                    'label': c.label,
+                    'description': c.description,
                 }
                 for c in self.consoleporttemplates.all()
             ]
@@ -191,6 +193,8 @@ class DeviceType(PrimaryModel):
                 {
                     'name': c.name,
                     'type': c.type,
+                    'label': c.label,
+                    'description': c.description,
                 }
                 for c in self.consoleserverporttemplates.all()
             ]
@@ -201,6 +205,8 @@ class DeviceType(PrimaryModel):
                     'type': c.type,
                     'maximum_draw': c.maximum_draw,
                     'allocated_draw': c.allocated_draw,
+                    'label': c.label,
+                    'description': c.description,
                 }
                 for c in self.powerporttemplates.all()
             ]
@@ -211,6 +217,8 @@ class DeviceType(PrimaryModel):
                     'type': c.type,
                     'power_port': c.power_port.name if c.power_port else None,
                     'feed_leg': c.feed_leg,
+                    'label': c.label,
+                    'description': c.description,
                 }
                 for c in self.poweroutlettemplates.all()
             ]
@@ -220,6 +228,8 @@ class DeviceType(PrimaryModel):
                     'name': c.name,
                     'type': c.type,
                     'mgmt_only': c.mgmt_only,
+                    'label': c.label,
+                    'description': c.description,
                 }
                 for c in self.interfacetemplates.all()
             ]
@@ -230,6 +240,8 @@ class DeviceType(PrimaryModel):
                     'type': c.type,
                     'rear_port': c.rear_port.name,
                     'rear_port_position': c.rear_port_position,
+                    'label': c.label,
+                    'description': c.description,
                 }
                 for c in self.frontporttemplates.all()
             ]
@@ -239,6 +251,8 @@ class DeviceType(PrimaryModel):
                     'name': c.name,
                     'type': c.type,
                     'positions': c.positions,
+                    'label': c.label,
+                    'description': c.description,
                 }
                 for c in self.rearporttemplates.all()
             ]
@@ -246,6 +260,8 @@ class DeviceType(PrimaryModel):
             data['device-bays'] = [
                 {
                     'name': c.name,
+                    'label': c.label,
+                    'description': c.description,
                 }
                 for c in self.devicebaytemplates.all()
             ]
@@ -337,7 +353,7 @@ class DeviceType(PrimaryModel):
 # Devices
 #
 
-@extras_features('custom_fields', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
 class DeviceRole(OrganizationalModel):
     """
     Devices are organized by functional role; for example, "Core Switch" or "File Server". Each DeviceRole is assigned a
@@ -388,7 +404,7 @@ class DeviceRole(OrganizationalModel):
         )
 
 
-@extras_features('custom_fields', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
 class Platform(OrganizationalModel):
     """
     Platform refers to the software or firmware running on a Device. For example, "Cisco IOS-XR" or "Juniper Junos".
@@ -452,7 +468,7 @@ class Platform(OrganizationalModel):
         )
 
 
-@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'tags', 'webhooks')
 class Device(PrimaryModel, ConfigContextModel):
     """
     A Device represents a piece of physical hardware mounted within a Rack. Each Device is assigned a DeviceType,
@@ -716,7 +732,7 @@ class Device(PrimaryModel, ConfigContextModel):
                 pass
 
         # Validate primary IP addresses
-        vc_interfaces = self.vc_interfaces.all()
+        vc_interfaces = self.vc_interfaces(if_master=False)
         if self.primary_ip4:
             if self.primary_ip4.family != 4:
                 raise ValidationError({
@@ -854,20 +870,25 @@ class Device(PrimaryModel, ConfigContextModel):
         else:
             return None
 
+    @property
+    def interfaces_count(self):
+        return self.vc_interfaces().count()
+
     def get_vc_master(self):
         """
         If this Device is a VirtualChassis member, return the VC master. Otherwise, return None.
         """
         return self.virtual_chassis.master if self.virtual_chassis else None
 
-    @property
-    def vc_interfaces(self):
+    def vc_interfaces(self, if_master=True):
         """
         Return a QuerySet matching all Interfaces assigned to this Device or, if this Device is a VC master, to another
         Device belonging to the same VirtualChassis.
+
+        :param if_master: If True, return VC member interfaces only if this Device is the VC master.
         """
         filter = Q(device=self)
-        if self.virtual_chassis and self.virtual_chassis.master == self:
+        if self.virtual_chassis and (self.virtual_chassis.master == self or not if_master):
             filter |= Q(device__virtual_chassis=self.virtual_chassis, mgmt_only=False)
         return Interface.objects.filter(filter)
 
@@ -901,7 +922,7 @@ class Device(PrimaryModel, ConfigContextModel):
 # Virtual chassis
 #
 
-@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'tags', 'webhooks')
 class VirtualChassis(PrimaryModel):
     """
     A collection of Devices which operate with a shared control plane (e.g. a switch stack).

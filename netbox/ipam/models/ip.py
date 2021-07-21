@@ -29,7 +29,7 @@ __all__ = (
 )
 
 
-@extras_features('custom_fields', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
 class RIR(OrganizationalModel):
     """
     A Regional Internet Registry (RIR) is responsible for the allocation of a large portion of the global IP address
@@ -77,7 +77,7 @@ class RIR(OrganizationalModel):
         )
 
 
-@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'tags', 'webhooks')
 class Aggregate(PrimaryModel):
     """
     An aggregate exists at the root level of the IP address space hierarchy in NetBox. Aggregates are used to organize
@@ -184,7 +184,7 @@ class Aggregate(PrimaryModel):
         return int(float(child_prefixes.size) / self.prefix.size * 100)
 
 
-@extras_features('custom_fields', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
 class Role(OrganizationalModel):
     """
     A Role represents the functional role of a Prefix or VLAN; for example, "Customer," "Infrastructure," or
@@ -228,7 +228,7 @@ class Role(OrganizationalModel):
         )
 
 
-@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'tags', 'webhooks')
 class Prefix(PrimaryModel):
     """
     A Prefix represents an IPv4 or IPv6 network, including mask length. Prefixes can optionally be assigned to Sites and
@@ -293,6 +293,16 @@ class Prefix(PrimaryModel):
         blank=True
     )
 
+    # Cached depth & child counts
+    _depth = models.PositiveSmallIntegerField(
+        default=0,
+        editable=False
+    )
+    _children = models.PositiveBigIntegerField(
+        default=0,
+        editable=False
+    )
+
     objects = PrefixQuerySet.as_manager()
 
     csv_headers = [
@@ -305,6 +315,13 @@ class Prefix(PrimaryModel):
     class Meta:
         ordering = (F('vrf').asc(nulls_first=True), 'prefix', 'pk')  # (vrf, prefix) may be non-unique
         verbose_name_plural = 'prefixes'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Cache the original prefix and VRF so we can check if they have changed on post_save
+        self._prefix = self.prefix
+        self._vrf = self.vrf
 
     def __str__(self):
         return str(self.prefix)
@@ -321,16 +338,6 @@ class Prefix(PrimaryModel):
             if self.prefix.prefixlen == 0:
                 raise ValidationError({
                     'prefix': "Cannot create prefix with /0 mask."
-                })
-
-            # Disallow host masks
-            if self.prefix.version == 4 and self.prefix.prefixlen == 32:
-                raise ValidationError({
-                    'prefix': "Cannot create host addresses (/32) as prefixes. Create an IPv4 address instead."
-                })
-            elif self.prefix.version == 6 and self.prefix.prefixlen == 128:
-                raise ValidationError({
-                    'prefix': "Cannot create host addresses (/128) as prefixes. Create an IPv6 address instead."
                 })
 
             # Enforce unique IP space (if applicable)
@@ -373,6 +380,14 @@ class Prefix(PrimaryModel):
             return self.prefix.version
         return None
 
+    @property
+    def depth(self):
+        return self._depth
+
+    @property
+    def children(self):
+        return self._children
+
     def _set_prefix_length(self, value):
         """
         Expose the IPNetwork object's prefixlen attribute on the parent model so that it can be manipulated directly,
@@ -384,6 +399,26 @@ class Prefix(PrimaryModel):
 
     def get_status_class(self):
         return PrefixStatusChoices.CSS_CLASSES.get(self.status)
+
+    def get_parents(self, include_self=False):
+        """
+        Return all containing Prefixes in the hierarchy.
+        """
+        lookup = 'net_contains_or_equals' if include_self else 'net_contains'
+        return Prefix.objects.filter(**{
+            'vrf': self.vrf,
+            f'prefix__{lookup}': self.prefix
+        })
+
+    def get_children(self, include_self=False):
+        """
+        Return all covered Prefixes in the hierarchy.
+        """
+        lookup = 'net_contained_or_equal' if include_self else 'net_contained'
+        return Prefix.objects.filter(**{
+            'vrf': self.vrf,
+            f'prefix__{lookup}': self.prefix
+        })
 
     def get_duplicates(self):
         return Prefix.objects.filter(vrf=self.vrf, prefix=str(self.prefix)).exclude(pk=self.pk)
@@ -426,19 +461,11 @@ class Prefix(PrimaryModel):
         child_ips = netaddr.IPSet([ip.address.ip for ip in self.get_child_ips()])
         available_ips = prefix - child_ips
 
-        # All IP addresses within a pool are considered usable
-        if self.is_pool:
+        # IPv6, pool, or IPv4 /31-/32 sets are fully usable
+        if self.family == 6 or self.is_pool or (self.family == 4 and self.prefix.prefixlen >= 31):
             return available_ips
 
-        # All IP addresses within a point-to-point prefix (IPv4 /31 or IPv6 /127) are considered usable
-        if (
-            self.prefix.version == 4 and self.prefix.prefixlen == 31  # RFC 3021
-        ) or (
-            self.prefix.version == 6 and self.prefix.prefixlen == 127  # RFC 6164
-        ):
-            return available_ips
-
-        # Omit first and last IP address from the available set
+        # For "normal" IPv4 prefixes, omit first and last addresses
         available_ips -= netaddr.IPSet([
             netaddr.IPAddress(self.prefix.first),
             netaddr.IPAddress(self.prefix.last),
@@ -485,7 +512,7 @@ class Prefix(PrimaryModel):
             return int(float(child_count) / prefix_size * 100)
 
 
-@extras_features('custom_fields', 'custom_links', 'export_templates', 'webhooks')
+@extras_features('custom_fields', 'custom_links', 'export_templates', 'tags', 'webhooks')
 class IPAddress(PrimaryModel):
     """
     An IPAddress represents an individual IPv4 or IPv6 address and its mask. The mask length should match what is

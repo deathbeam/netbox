@@ -149,7 +149,8 @@ class CustomField(BigIDModel):
         # Validate the field's default value (if any)
         if self.default is not None:
             try:
-                self.validate(self.default)
+                default_value = str(self.default) if self.type == CustomFieldTypeChoices.TYPE_TEXT else self.default
+                self.validate(default_value)
             except ValidationError as err:
                 raise ValidationError({
                     'default': f'Invalid default value "{self.default}": {err.message}'
@@ -280,15 +281,15 @@ class CustomField(BigIDModel):
         if value not in [None, '']:
 
             # Validate text field
-            if self.type == CustomFieldTypeChoices.TYPE_TEXT and self.validation_regex:
-                if not re.match(self.validation_regex, value):
+            if self.type == CustomFieldTypeChoices.TYPE_TEXT:
+                if type(value) is not str:
+                    raise ValidationError(f"Value must be a string.")
+                if self.validation_regex and not re.match(self.validation_regex, value):
                     raise ValidationError(f"Value must match regex '{self.validation_regex}'")
 
             # Validate integer
             if self.type == CustomFieldTypeChoices.TYPE_INTEGER:
-                try:
-                    int(value)
-                except ValueError:
+                if type(value) is not int:
                     raise ValidationError("Value must be an integer.")
                 if self.validation_minimum is not None and value < self.validation_minimum:
                     raise ValidationError(f"Value must be at least {self.validation_minimum}")

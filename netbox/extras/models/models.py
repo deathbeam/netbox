@@ -431,7 +431,8 @@ class JournalEntry(ChangeLoggedModel):
         verbose_name_plural = 'journal entries'
 
     def __str__(self):
-        return f"{date_format(self.created)} - {time_format(self.created)} ({self.get_kind_display()})"
+        created = timezone.localtime(self.created)
+        return f"{date_format(created, format='SHORT_DATETIME_FORMAT')} ({self.get_kind_display()})"
 
     def get_absolute_url(self):
         return reverse('extras:journalentry', args=[self.pk])

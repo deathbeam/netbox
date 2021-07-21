@@ -1172,12 +1172,11 @@ class DeviceTypeForm(BootstrapMixin, CustomFieldModelForm):
         )
         widgets = {
             'subdevice_role': StaticSelect2(),
-            # Exclude SVG images (unsupported by PIL)
             'front_image': forms.ClearableFileInput(attrs={
-                'accept': 'image/bmp,image/gif,image/jpeg,image/png,image/tiff'
+                'accept': DEVICETYPE_IMAGE_FORMATS
             }),
             'rear_image': forms.ClearableFileInput(attrs={
-                'accept': 'image/bmp,image/gif,image/jpeg,image/png,image/tiff'
+                'accept': DEVICETYPE_IMAGE_FORMATS
             })
         }
 
@@ -1825,7 +1824,7 @@ class ConsolePortTemplateImportForm(ComponentTemplateImportForm):
     class Meta:
         model = ConsolePortTemplate
         fields = [
-            'device_type', 'name', 'label', 'type',
+            'device_type', 'name', 'label', 'type', 'description',
         ]
 
 
@@ -1834,7 +1833,7 @@ class ConsoleServerPortTemplateImportForm(ComponentTemplateImportForm):
     class Meta:
         model = ConsoleServerPortTemplate
         fields = [
-            'device_type', 'name', 'label', 'type',
+            'device_type', 'name', 'label', 'type', 'description',
         ]
 
 
@@ -1843,7 +1842,7 @@ class PowerPortTemplateImportForm(ComponentTemplateImportForm):
     class Meta:
         model = PowerPortTemplate
         fields = [
-            'device_type', 'name', 'label', 'type', 'maximum_draw', 'allocated_draw',
+            'device_type', 'name', 'label', 'type', 'maximum_draw', 'allocated_draw', 'description',
         ]
 
 
@@ -1857,7 +1856,7 @@ class PowerOutletTemplateImportForm(ComponentTemplateImportForm):
     class Meta:
         model = PowerOutletTemplate
         fields = [
-            'device_type', 'name', 'label', 'type', 'power_port', 'feed_leg',
+            'device_type', 'name', 'label', 'type', 'power_port', 'feed_leg', 'description',
         ]
 
 
@@ -1869,7 +1868,7 @@ class InterfaceTemplateImportForm(ComponentTemplateImportForm):
     class Meta:
         model = InterfaceTemplate
         fields = [
-            'device_type', 'name', 'label', 'type', 'mgmt_only',
+            'device_type', 'name', 'label', 'type', 'mgmt_only', 'description',
         ]
 
 
@@ -1879,14 +1878,13 @@ class FrontPortTemplateImportForm(ComponentTemplateImportForm):
     )
     rear_port = forms.ModelChoiceField(
         queryset=RearPortTemplate.objects.all(),
-        to_field_name='name',
-        required=False
+        to_field_name='name'
     )
 
     class Meta:
         model = FrontPortTemplate
         fields = [
-            'device_type', 'name', 'type', 'rear_port', 'rear_port_position',
+            'device_type', 'name', 'type', 'rear_port', 'rear_port_position', 'label', 'description',
         ]
 
 
@@ -1898,7 +1896,7 @@ class RearPortTemplateImportForm(ComponentTemplateImportForm):
     class Meta:
         model = RearPortTemplate
         fields = [
-            'device_type', 'name', 'type', 'positions',
+            'device_type', 'name', 'type', 'positions', 'label', 'description',
         ]
 
 
@@ -1907,7 +1905,7 @@ class DeviceBayTemplateImportForm(ComponentTemplateImportForm):
     class Meta:
         model = DeviceBayTemplate
         fields = [
-            'device_type', 'name',
+            'device_type', 'name', 'label', 'description',
         ]
 
 
@@ -2153,7 +2151,7 @@ class DeviceForm(BootstrapMixin, TenancyForm, CustomFieldModelForm):
                 ip_choices = [(None, '---------')]
 
                 # Gather PKs of all interfaces belonging to this Device or a peer VirtualChassis member
-                interface_ids = self.instance.vc_interfaces.values_list('pk', flat=True)
+                interface_ids = self.instance.vc_interfaces(if_master=False).values_list('pk', flat=True)
 
                 # Collect interface IPs
                 interface_ips = IPAddress.objects.filter(
@@ -2237,6 +2235,12 @@ class BaseDeviceCSVForm(CustomFieldModelCSVForm):
         choices=DeviceStatusChoices,
         help_text='Operational status'
     )
+    virtual_chassis = CSVModelChoiceField(
+        queryset=VirtualChassis.objects.all(),
+        to_field_name='name',
+        required=False,
+        help_text='Virtual chassis'
+    )
     cluster = CSVModelChoiceField(
         queryset=Cluster.objects.all(),
         to_field_name='name',
@@ -2247,6 +2251,10 @@ class BaseDeviceCSVForm(CustomFieldModelCSVForm):
     class Meta:
         fields = []
         model = Device
+        help_texts = {
+            'vc_position': 'Virtual chassis position',
+            'vc_priority': 'Virtual chassis priority',
+        }
 
     def __init__(self, data=None, *args, **kwargs):
         super().__init__(data, *args, **kwargs)
@@ -2285,7 +2293,8 @@ class DeviceCSVForm(BaseDeviceCSVForm):
     class Meta(BaseDeviceCSVForm.Meta):
         fields = [
             'name', 'device_role', 'tenant', 'manufacturer', 'device_type', 'platform', 'serial', 'asset_tag', 'status',
-            'site', 'location', 'rack', 'position', 'face', 'cluster', 'comments',
+            'site', 'location', 'rack', 'position', 'face', 'virtual_chassis', 'vc_position', 'vc_priority', 'cluster',
+            'comments',
         ]
 
     def __init__(self, data=None, *args, **kwargs):
@@ -2320,7 +2329,7 @@ class ChildDeviceCSVForm(BaseDeviceCSVForm):
     class Meta(BaseDeviceCSVForm.Meta):
         fields = [
             'name', 'device_role', 'tenant', 'manufacturer', 'device_type', 'platform', 'serial', 'asset_tag', 'status',
-            'parent', 'device_bay', 'cluster', 'comments',
+            'parent', 'device_bay', 'virtual_chassis', 'vc_position', 'vc_priority', 'cluster', 'comments',
         ]
 
     def __init__(self, data=None, *args, **kwargs):
@@ -2552,7 +2561,7 @@ class ComponentCreateForm(BootstrapMixin, CustomFieldForm, ComponentForm):
         queryset=Device.objects.all()
     )
     description = forms.CharField(
-        max_length=100,
+        max_length=200,
         required=False
     )
     tags = DynamicModelMultipleChoiceField(
@@ -3126,9 +3135,13 @@ class InterfaceForm(BootstrapMixin, InterfaceCommonForm, CustomFieldModelForm):
 
         device = Device.objects.get(pk=self.data['device']) if self.is_bound else self.instance.device
 
-        # Restrict parent/LAG interface assignment by device
+        # Restrict parent/LAG interface assignment by device/VC
         self.fields['parent'].widget.add_query_param('device_id', device.pk)
-        self.fields['lag'].widget.add_query_param('device_id', device.pk)
+        if device.virtual_chassis and device.virtual_chassis.master:
+            # Get available LAG interfaces by VirtualChassis master
+            self.fields['lag'].widget.add_query_param('device_id', device.virtual_chassis.master.pk)
+        else:
+            self.fields['lag'].widget.add_query_param('device_id', device.pk)
 
         # Limit VLAN choices by device
         self.fields['untagged_vlan'].widget.add_query_param('available_on_device', device.pk)
@@ -3919,13 +3932,23 @@ class ConnectCableToDeviceForm(BootstrapMixin, CustomFieldModelForm):
             'group_id': '$termination_b_site_group',
         }
     )
+    termination_b_location = DynamicModelChoiceField(
+        queryset=Location.objects.all(),
+        label='Location',
+        required=False,
+        null_option='None',
+        query_params={
+            'site_id': '$termination_b_site'
+        }
+    )
     termination_b_rack = DynamicModelChoiceField(
         queryset=Rack.objects.all(),
         label='Rack',
         required=False,
         null_option='None',
         query_params={
-            'site_id': '$termination_b_site'
+            'site_id': '$termination_b_site',
+            'location_id': '$termination_b_location',
         }
     )
     termination_b_device = DynamicModelChoiceField(
@@ -3934,6 +3957,7 @@ class ConnectCableToDeviceForm(BootstrapMixin, CustomFieldModelForm):
         required=False,
         query_params={
             'site_id': '$termination_b_site',
+            'location_id': '$termination_b_location',
             'rack_id': '$termination_b_rack',
         }
     )

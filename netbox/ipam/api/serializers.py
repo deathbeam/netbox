@@ -7,7 +7,7 @@ from rest_framework.validators import UniqueTogetherValidator
 
 from dcim.api.nested_serializers import NestedDeviceSerializer, NestedSiteSerializer
 from ipam.choices import *
-from ipam.constants import IPADDRESS_ASSIGNMENT_MODELS
+from ipam.constants import IPADDRESS_ASSIGNMENT_MODELS, VLANGROUP_SCOPE_TYPES
 from ipam.models import Aggregate, IPAddress, Prefix, RIR, Role, RouteTarget, Service, VLAN, VLANGroup, VRF
 from netbox.api import ChoiceField, ContentTypeField, SerializedPKRelatedField
 from netbox.api.serializers import OrganizationalModelSerializer
@@ -116,8 +116,7 @@ class VLANGroupSerializer(OrganizationalModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name='ipam-api:vlangroup-detail')
     scope_type = ContentTypeField(
         queryset=ContentType.objects.filter(
-            app_label='dcim',
-            model__in=['region', 'sitegroup', 'site', 'location', 'rack']
+            model__in=VLANGROUP_SCOPE_TYPES
         ),
         required=False
     )
@@ -198,12 +197,14 @@ class PrefixSerializer(PrimaryModelSerializer):
     vlan = NestedVLANSerializer(required=False, allow_null=True)
     status = ChoiceField(choices=PrefixStatusChoices, required=False)
     role = NestedRoleSerializer(required=False, allow_null=True)
+    children = serializers.IntegerField(read_only=True)
+    _depth = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Prefix
         fields = [
             'id', 'url', 'display', 'family', 'prefix', 'site', 'vrf', 'tenant', 'vlan', 'status', 'role', 'is_pool',
-            'description', 'tags', 'custom_fields', 'created', 'last_updated',
+            'description', 'tags', 'custom_fields', 'created', 'last_updated', 'children', '_depth',
         ]
         read_only_fields = ['family']
 
@@ -273,7 +274,7 @@ class IPAddressSerializer(PrimaryModelSerializer):
     )
     assigned_object = serializers.SerializerMethodField(read_only=True)
     nat_inside = NestedIPAddressSerializer(required=False, allow_null=True)
-    nat_outside = NestedIPAddressSerializer(read_only=True)
+    nat_outside = NestedIPAddressSerializer(required=False, read_only=True)
 
     class Meta:
         model = IPAddress
@@ -282,7 +283,7 @@ class IPAddressSerializer(PrimaryModelSerializer):
             'assigned_object_id', 'assigned_object', 'nat_inside', 'nat_outside', 'dns_name', 'description', 'tags',
             'custom_fields', 'created', 'last_updated',
         ]
-        read_only_fields = ['family']
+        read_only_fields = ['family', 'nat_outside']
 
     @swagger_serializer_method(serializer_or_field=serializers.DictField)
     def get_assigned_object(self, obj):

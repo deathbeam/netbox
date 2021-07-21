@@ -15,7 +15,7 @@ AVAILABLE_LABEL = mark_safe('<span class="label label-success">Available</span>'
 
 PREFIX_LINK = """
 {% load helpers %}
-{% for i in record.parents|as_range %}
+{% for i in record.depth|as_range %}
     <i class="mdi mdi-circle-small"></i>
 {% endfor %}
 <a href="{% if record.pk %}{% url 'ipam:prefix' pk=record.pk %}{% else %}{% url 'ipam:prefix_add' %}?prefix={{ record }}{% if object.vrf %}&vrf={{ object.vrf.pk }}{% endif %}{% if object.site %}&site={{ object.site.pk }}{% endif %}{% if object.tenant %}&tenant_group={{ object.tenant.group.pk }}&tenant={{ object.tenant.pk }}{% endif %}{% endif %}">{{ record.prefix }}</a>
@@ -65,7 +65,7 @@ VLAN_LINK = """
 {% if record.pk %}
     <a href="{{ record.get_absolute_url }}">{{ record.vid }}</a>
 {% elif perms.ipam.add_vlan %}
-    <a href="{% url 'ipam:vlan_add' %}?vid={{ record.vid }}&group={{ vlan_group.pk }}{% if vlan_group.site %}&site={{ vlan_group.site.pk }}{% endif %}" class="btn btn-xs btn-success">{{ record.available }} VLAN{{ record.available|pluralize }} available</a>
+    <a href="{% url 'ipam:vlan_add' %}?vid={{ record.vid }}{% if record.vlan_group %}&group={{ record.vlan_group.pk }}{% endif %}" class="btn btn-xs btn-success">{{ record.available }} VLAN{{ record.available|pluralize }} available</a>
 {% else %}
     {{ record.available }} VLAN{{ record.available|pluralize }} available
 {% endif %}
@@ -262,6 +262,24 @@ class PrefixTable(BaseTable):
         template_code=PREFIX_LINK,
         attrs={'td': {'class': 'text-nowrap'}}
     )
+    prefix_flat = tables.Column(
+        accessor=Accessor('prefix'),
+        linkify=True,
+        verbose_name='Prefix (Flat)'
+    )
+    depth = tables.Column(
+        accessor=Accessor('_depth'),
+        verbose_name='Depth'
+    )
+    children = LinkedCountColumn(
+        accessor=Accessor('_children'),
+        viewname='ipam:prefix_list',
+        url_params={
+            'vrf_id': 'vrf_id',
+            'within': 'prefix',
+        },
+        verbose_name='Children'
+    )
     status = ChoiceFieldColumn(
         default=AVAILABLE_LABEL
     )
@@ -287,7 +305,8 @@ class PrefixTable(BaseTable):
     class Meta(BaseTable.Meta):
         model = Prefix
         fields = (
-            'pk', 'prefix', 'status', 'children', 'vrf', 'tenant', 'site', 'vlan', 'role', 'is_pool', 'description',
+            'pk', 'prefix', 'prefix_flat', 'status', 'depth', 'children', 'vrf', 'tenant', 'site', 'vlan', 'role',
+            'is_pool', 'description',
         )
         default_columns = ('pk', 'prefix', 'status', 'vrf', 'tenant', 'site', 'vlan', 'role', 'description')
         row_attrs = {
@@ -300,15 +319,14 @@ class PrefixDetailTable(PrefixTable):
         accessor='get_utilization',
         orderable=False
     )
-    tenant = TenantColumn()
     tags = TagColumn(
         url_name='ipam:prefix_list'
     )
 
     class Meta(PrefixTable.Meta):
         fields = (
-            'pk', 'prefix', 'status', 'children', 'vrf', 'utilization', 'tenant', 'site', 'vlan', 'role', 'is_pool',
-            'description', 'tags',
+            'pk', 'prefix', 'prefix_flat', 'status', 'children', 'vrf', 'utilization', 'tenant', 'site', 'vlan', 'role',
+            'is_pool', 'description', 'tags',
         )
         default_columns = (
             'pk', 'prefix', 'status', 'children', 'vrf', 'utilization', 'tenant', 'site', 'vlan', 'role', 'description',
@@ -430,7 +448,8 @@ class VLANGroupTable(BaseTable):
     name = tables.Column(linkify=True)
     scope_type = ContentTypeColumn()
     scope = tables.Column(
-        linkify=True
+        linkify=True,
+        orderable=False
     )
     vlan_count = LinkedCountColumn(
         viewname='ipam:vlan_list',
